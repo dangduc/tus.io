@@ -2,8 +2,40 @@ $(function() {
   'use strict';
 
   var host = window.tusdEndpoint || 'http://master.tus.io';
+  host = 'http://localhost:1080';
+  console.log("HOST", host);
   var $progress = $('.js_progress');
   var $download = $('.js_download');
+
+  var originalXhrDataInit = $.blueimp.fileupload._initXHRData;
+  $.widget('blueimp.fileupload', $.blueimp.fileupload, {
+    _getUploadedBytes: function (jqXHR) {
+      var offset = jqXHR.getResponseHeader('Offset');
+      return parseInt(offset, 10);
+    },
+
+    _initXHRData: function (options) {
+      var file = options.files[0];
+      options.headers = options.headers || {};
+
+      if (options.contentRange) {
+        var parts = options.contentRange.split('-');
+        parts[0] = parts[0].replace(/bytes\s*/g, '');
+        var offset = parseInt(parts[0], 10);
+        // substract 1 here, because content-range will always start
+        // at the which bytes it is sending, but Offset states, well, the offset
+        options.headers['Offset'] = offset === 0 ? offset : offset - 1;
+      }
+
+      options.headers['Content-Disposition'] = 'attachment; filename="' +
+          encodeURI(file.name) + '"';
+      options.contentType = file.type;
+      options.data = options.blob || file;
+
+      // Blob reference is not needed anymore, free memory:
+      options.blob = null;
+    }
+  });
 
   // This is required at the moment to get CORS headers support for Firefox.
   // Based on http://bugs.jquery.com/ticket/10338#comment:13
@@ -33,7 +65,7 @@ $(function() {
           $(["Cache-Control", "Content-Language", "Content-Type", "Expires", "Last-Modified", "Pragma"]).each(concatHeader);
 
           // non-simple headers (add more as required)
-          $(["Location", "Range", "Content-Range"]).each(concatHeader);
+          $(["Location", "Range", "Offset", "Content-Range"]).each(concatHeader);
 
           return allHeaders;
         };
@@ -76,11 +108,13 @@ $(function() {
     data.url = localStorage.getItem(localId);
 
     if (!data.url) {
+      console.log(host + '/files');
       $.ajax({
         type: 'POST',
-        url: host + '/files',
+        url: host + '/files/',
         headers: {
-          'Content-Range': 'bytes */' + size,
+          'Final-Length': size,
+          'Offset': 0,
           'Content-Disposition': 'attachment; filename="' + encodeURI(file.name) + '"'
         },
         success: function(theData, status, jqXHR) {
@@ -92,10 +126,11 @@ $(function() {
           localStorage.setItem(localId, url);
 
           data.url = url;
-          data.method = 'PUT';
+          data.method = 'PATCH';
           data.submit();
         },
-        error: function(xhr) {
+        error: function(xhr, a, b) {
+          console.log("ERROR", a, b, xhr);
           setTimeout(function() {
             upload(data);
           }, 1000);
@@ -104,26 +139,27 @@ $(function() {
       return;
     }
 
+console.log("HEAD");
     $.ajax({
       type: 'HEAD',
       url: data.url,
       success: function(theData, status, jqXHR) {
-        var range = jqXHR.getResponseHeader('Range');
-        var m = range && range.match(/bytes=\d+-(\d+)/);
-        if (!m) {
+        var offset = jqXHR.getResponseHeader('Offset');
+        console.log("HEAD SUCCESS", offset);
+        if (offset === null) {
           localStorage.removeItem(localId);
           upload(data);
           return;
         }
 
-        var uploadedBytes = parseInt(m[1], 10)+1;
+        var uploadedBytes = parseInt(offset, 10)+1;
         if (uploadedBytes === size) {
           success(data);
           return;
         }
 
         data.uploadedBytes = uploadedBytes;
-        data.method = 'PUT';
+        data.method = 'PATCH';
         data.submit();
       },
       error: function(xhr) {
