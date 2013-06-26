@@ -22,6 +22,7 @@ On more recent Jekyll installs it's
 $ jekyll serve --watch
 ```
 
+
 Next, point your browser to http://127.0.0.1:4000/
 
 **Note** Some things like the protocol, and contributor/stargazer lists are replaced with
@@ -34,5 +35,15 @@ make build
 
 ## Deployment
 
-This repository is configured to notify our CI server so that every push to the
-master branch will be deployed automatically.
+Everyone with PUSH access to the tus.io repository can type
+
+```bash
+gem install jekyll jekyll-less therubyracer redcarpet
+rake site:publish
+```
+
+To compile the Jekyll source into `./_site`, copy that into a random `TMPDIR`,
+have a Git repo initialized there, and have the thing force-pushed to the
+[http://jekyllrb.com/docs/github-pages/] branch of the repository.
+
+Up to ten minutes later (but mostly after a few seconds), GitHub will have updated the tus.io site accordingly. It can be checked directly (so long as there's no CNAME pointing to this) at [http://tus.github.io/tus.io]().
